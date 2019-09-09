@@ -29,35 +29,6 @@ namespace RPGMakerAssetImporter
             return window;
         }
 
-        private void CopyRegion(Texture2D from, Rect from_region, Texture2D to, Rect to_region)
-        {
-            Assert.AreEqual(from_region.size, to_region.size);
-            for (var x = 0; x < from_region.width; ++x) {
-                for (var y = 0; y < from_region.height; ++y) {
-                    to.SetPixel((int)to_region.x + x, (int)to_region.y + y,
-                        from.GetPixel((int)from_region.x + x, (int)from_region.y + y));
-                }
-            }
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="texture"></param>
-        /// <param name="idx">2d to 1d array index, from left top to bottom right.</param>
-        /// <param name="cell_size"></param>
-        /// <param name="frame">frame idx of animation</param>
-        /// <returns></returns>
-        private Rect IdxToRegion(Texture2D texture, int idx, int cell_size, int frame)
-        {
-            var rows = texture.height / cell_size;
-            var cols = texture.width / m_AnimationFrames / cell_size;
-            return new Rect(
-                cell_size * (idx % cols) + (texture.width / m_AnimationFrames) * frame,
-                cell_size * (rows - 1 - (idx / cols)),
-                cell_size, cell_size);
-        }
-
         /// <summary>
         /// 
         /// </summary>
@@ -66,30 +37,15 @@ namespace RPGMakerAssetImporter
         /// <param name="to"></param>
         /// <param name="to_idx"></param>
         /// <param name="cell_size"></param>
-        /// <param name="frame">frame idx of animation</param>
-        private void CopyRegion(Texture2D from, int[] from_idxs, Texture2D to, int to_idx, int cell_size, int frame)
+        private void CopyRegion(Texture2DRegion from, int[] from_idxs, Texture2DRegion to, int to_idx, Size cell_size)
         {
             Assert.IsTrue(from_idxs.Length == 4);
-            var half_cell_size = cell_size / 2;
-            var to_region = IdxToRegion(to, to_idx, cell_size, frame);
+            var half_cell_size = cell_size.Half();
+            to = to.SubRegionFromIdx(to_idx, cell_size);
 
-            Rect region;
-
-            // left top
-            region = new Rect(to_region.position + new Vector2(0, half_cell_size), to_region.size / 2);
-            CopyRegion(from, IdxToRegion(from, from_idxs[0], half_cell_size, frame), to, region);
-
-            // right top
-            region = new Rect(to_region.position + new Vector2(half_cell_size, half_cell_size), to_region.size / 2);
-            CopyRegion(from, IdxToRegion(from, from_idxs[1], half_cell_size, frame), to, region);
-
-            // left bottom
-            region = new Rect(to_region.position, to_region.size / 2);
-            CopyRegion(from, IdxToRegion(from, from_idxs[2], half_cell_size, frame), to, region);
-
-            // right bottom
-            region = new Rect(to_region.position + new Vector2(half_cell_size, 0), to_region.size / 2);
-            CopyRegion(from, IdxToRegion(from, from_idxs[3], half_cell_size, frame), to, region);
+            for (var i = 0; i < from_idxs.Length; ++i) {
+                from.SubRegionFromIdx(from_idxs[i], half_cell_size).CopyTo(to.SubRegionFromIdx(i, half_cell_size));
+            }
         }
 
         #region RPG_MAKER_AUTOTILE_CFG
@@ -499,44 +455,29 @@ namespace RPGMakerAssetImporter
         };
         #endregion
 
-        private Sprite GetSpriteByName(List<Sprite> sprs, string name)
+        private void FillAutoTileTexture(Texture2DRegion org, Texture2DRegion to, Size cell_size, EAutoTileType autotile_type)
         {
-            foreach (var spr in sprs) {
-                if (spr != null && spr.name == name) {
-                    return spr;
+            for (var i = 0; i < XP_AUTOTILE_MAP.Count; ++i) {
+                var map = XP_AUTOTILE_MAP[i];
+                if (autotile_type == EAutoTileType.RPG_MAKER_MV) {
+                    map = map.Select(idx => MV_XP_REMAP[idx]).ToArray();
                 }
+
+                CopyRegion(org, map, to, i, cell_size);
             }
-            return null;
         }
 
-        private Sprite GetSpriteByIdx(List<Sprite> sprs, int frame, int idx)
+        private void FillAutoTileAnimations(Texture2DRegion org, Texture2DRegion to, Size cell_size, int frame_count, EAutoTileType autotile_type)
         {
-            return GetSpriteByName(sprs, string.Format("tile_{0}_{1}", frame, idx));
-        }
-
-        private Sprite[] GetSpritesByIdx(List<Sprite> sprs, int idx)
-        {
-            var ret = new Sprite[m_AnimationFrames];
-            for (var i = 0; i < m_AnimationFrames; ++i) {
-                ret[i] = GetSpriteByIdx(sprs, i, idx);
+            // animation frames are horizontal layout
+            var org_frame_cell_size = new Size((int)org.rect.width / frame_count, (int)org.rect.height);
+            var to_frame_cell_size = new Size((int)to.rect.width / frame_count, (int)to.rect.height);
+            for (var i = 0; i < frame_count; ++i) {
+                FillAutoTileTexture(
+                    org.SubRegionFromIdx(i, org_frame_cell_size), 
+                    to.SubRegionFromIdx(i, to_frame_cell_size), 
+                    cell_size, autotile_type);
             }
-            return ret;
-        }
-
-        private Texture2D GenerateReorderedTexture(int cell_size, int animation_frames)
-        {
-            var new_texture = new Texture2D(8 * cell_size * animation_frames, 6 * cell_size);
-            for (var i = 0; i < animation_frames; ++i) {
-                for (var j = 0; j < XP_AUTOTILE_MAP.Count; ++j) {
-                    var map = XP_AUTOTILE_MAP[j];
-                    if (m_Type == EAutoTileType.RPG_MAKER_MV) {
-                        map = map.Select(idx => MV_XP_REMAP[idx]).ToArray();
-                    }
-
-                    CopyRegion(m_OrgTexture, map, new_texture, j, cell_size, i);
-                }
-            }
-            return new_texture;
         }
 
         private bool IsValid()
@@ -557,6 +498,103 @@ namespace RPGMakerAssetImporter
             }
 
             return true;
+        }
+
+        private void MakeAutoTile_A2(string img_path)
+        {
+            var txt_path = Path.Combine(Path.GetDirectoryName(img_path), Path.GetFileNameWithoutExtension(img_path) + ".txt");
+            var names = File.ReadAllLines(txt_path).Select(s => s.Split('|')[0]).ToArray();
+
+            var rows = 4;
+            var cols = 8;
+            var cell_size = new Size(48);
+
+            var org_tex = new Texture2D(2, 2);
+            org_tex.LoadImage(File.ReadAllBytes(img_path));
+
+            var org_tex_region = new Texture2DRegion(org_tex);
+            var new_tex_region = new Texture2DRegion(cell_size.Scale(8 * cols, 6 * rows));
+
+            for (var i = 0; i < rows * cols; ++i) {
+                FillAutoTileTexture(org_tex_region.SubRegionFromIdx(i, cell_size.Scale(2, 3)),
+                    new_tex_region.SubRegionFromIdx(i, cell_size.Scale(8, 6)), cell_size, EAutoTileType.RPG_MAKER_MV);
+            }
+
+            // save the reordered texture and reload it
+            var base_path = AssetDatabase.GUIDToAssetPath(AssetDatabase.CreateFolder("Assets", Path.GetFileNameWithoutExtension(img_path)));
+
+            var path = Path.Combine(base_path, Path.GetFileNameWithoutExtension(img_path) + "_Split.png");
+            path = AssetDatabase.GenerateUniqueAssetPath(path);
+            File.WriteAllBytes(path, new_tex_region.texture.EncodeToPNG());
+            AssetDatabase.ImportAsset(path);
+
+            var sheet = new SpriteMetaData[rows * cols * XP_AUTOTILE_MAP.Count];
+
+            for (var i = 0; i < rows * cols; ++i) {
+                var sub_rect = new_tex_region.rect.SubRectFromIdx(i, cell_size.Scale(8, 6));
+                for (var j = 0; j < XP_AUTOTILE_MAP.Count; ++j) {
+                    var meta = new SpriteMetaData
+                    {
+                        name = string.Format("{0}_{1}", names[i], j),
+                        rect = sub_rect.SubRectFromIdx(j, cell_size),
+                        border = Vector4.zero,
+                        alignment = (int)SpriteAlignment.Center,
+                        pivot = new Vector2(0.5f, 0.5f)
+                    };
+                    sheet[i * XP_AUTOTILE_MAP.Count + j] = meta;
+                }
+            }
+
+            // reimport the texture to generate all sprites
+            var imp = TextureImporter.GetAtPath(path) as TextureImporter;
+            imp.textureType = TextureImporterType.Sprite;
+            imp.spritePixelsPerUnit = cell_size.width;
+            imp.spriteImportMode = SpriteImportMode.Multiple;
+            imp.mipmapEnabled = false;
+            imp.filterMode = FilterMode.Point;
+            imp.spritesheet = sheet;
+            imp.SaveAndReimport();
+
+            // get all the sprites
+            var objs = AssetDatabase.LoadAllAssetsAtPath(path);
+            var sprs = new List<Sprite>();
+            foreach (var obj in objs) {
+                if (obj is Sprite) {
+                    sprs.Add(obj as Sprite);
+                }
+            }
+
+            // generate the auto tile assets
+            var tiles = new List<AutoTile>();
+            for (var i = 0; i < rows * cols; ++i) {
+                var auto_tile = ScriptableObject.CreateInstance<AutoTile>();
+
+                // use the last sprite as the default, to show in the palette.
+                auto_tile.m_DefaultSprite = sprs.GetSpriteByName(string.Format("{0}_{1}", names[i], 47));
+
+                auto_tile.m_TilingRules = new List<AutoTile.TilingRule>(XP_RULE_MAP.Count);
+                for (var j = 0; j < XP_RULE_MAP.Count; ++j) {
+                    var rule = new AutoTile.TilingRule();
+                    rule.m_Neighbors = XP_RULE_MAP[j];
+                    rule.m_Sprites = new Sprite[] { sprs.GetSpriteByName(string.Format("{0}_{1}", names[i], j)) };
+                    rule.m_Output = AutoTile.TilingRule.OutputSprite.Single;
+                    auto_tile.m_TilingRules.Add(rule);
+                }
+
+                var auto_tile_path = Path.Combine(base_path, names[i] + "_RuleTile.asset");
+                auto_tile_path = AssetDatabase.GenerateUniqueAssetPath(auto_tile_path);
+
+                AssetDatabase.CreateAsset(auto_tile, auto_tile_path);
+                tiles.Add(auto_tile);
+            }
+
+            var palette = Utility.CreateNewPalette(base_path, Path.GetFileNameWithoutExtension(img_path));
+            for (var i = 0; i < rows * cols; ++i) {
+                var x = i % cols;
+                var y = Mathf.FloorToInt(i / cols);
+                palette.SetTile(new Vector3Int(x, y, 0), tiles[i]);
+                EditorUtility.SetDirty(tiles[i]);
+            }
         }
 
         private void OnGUI()
@@ -584,30 +622,35 @@ namespace RPGMakerAssetImporter
                         imp.SaveAndReimport();
                     }
 
-                    int cell_size;
+                    Size cell_size;
                     if (m_Type == EAutoTileType.RPG_MAKER_XP) {
-                        cell_size = m_OrgTexture.width / m_AnimationFrames / 3;
+                        cell_size = new Size(32);
                     }
                     else {
-                        cell_size = m_OrgTexture.width / m_AnimationFrames / 2;
+                        cell_size = new Size(48);
                     }
 
-                    var new_texture = GenerateReorderedTexture(cell_size, m_AnimationFrames);
+                    var org_tex_region = new Texture2DRegion(m_OrgTexture);
+                    var new_tex_region = new Texture2DRegion(cell_size.Scale(8 * m_AnimationFrames, 6));
+                    FillAutoTileAnimations(org_tex_region, new_tex_region, cell_size, m_AnimationFrames, m_Type);
 
                     // save the reordered texture and reload it
                     var path = Path.Combine(Path.GetDirectoryName(org_path), Path.GetFileNameWithoutExtension(org_path) + "_Split.png");
                     path = AssetDatabase.GenerateUniqueAssetPath(path);
-                    File.WriteAllBytes(path, new_texture.EncodeToPNG());
+                    File.WriteAllBytes(path, new_tex_region.texture.EncodeToPNG());
                     AssetDatabase.ImportAsset(path);
 
                     // calc all sprite meta data
                     var sheet = new SpriteMetaData[XP_AUTOTILE_MAP.Count * m_AnimationFrames];
+                    var frame_cell_size = new Size((int)new_tex_region.rect.width / m_AnimationFrames, (int)new_tex_region.rect.height);
+
                     for (var i = 0; i < m_AnimationFrames; ++i) {
+                        var sub_rect = new_tex_region.rect.SubRectFromIdx(i, frame_cell_size);
                         for (var j = 0; j < XP_AUTOTILE_MAP.Count; ++j) {
                             var meta = new SpriteMetaData
                             {
                                 name = string.Format("tile_{0}_{1}", i, j),
-                                rect = IdxToRegion(new_texture, j, cell_size, i),
+                                rect = sub_rect.SubRectFromIdx(j, cell_size),
                                 border = Vector4.zero,
                                 alignment = (int)SpriteAlignment.Center,
                                 pivot = new Vector2(0.5f, 0.5f)
@@ -619,7 +662,7 @@ namespace RPGMakerAssetImporter
                     // reimport the texture to generate all sprites
                     imp = TextureImporter.GetAtPath(path) as TextureImporter;
                     imp.textureType = TextureImporterType.Sprite;
-                    imp.spritePixelsPerUnit = cell_size;
+                    imp.spritePixelsPerUnit = cell_size.width;
                     imp.spriteImportMode = SpriteImportMode.Multiple;
                     imp.mipmapEnabled = false;
                     imp.filterMode = FilterMode.Point;
@@ -635,17 +678,17 @@ namespace RPGMakerAssetImporter
                         }
                     }
 
-                    // generate the rule tile asset
-                    var rule_tile = ScriptableObject.CreateInstance<AutoTile>();
+                    // generate the auto tile asset
+                    var auto_tile = ScriptableObject.CreateInstance<AutoTile>();
 
                     // use the last sprite as the default, to show in the palette.
-                    rule_tile.m_DefaultSprite = GetSpriteByIdx(sprs, 0, 47);
+                    auto_tile.m_DefaultSprite = sprs.GetSpriteByIdx(0, 47);
 
-                    rule_tile.m_TilingRules = new List<AutoTile.TilingRule>(XP_RULE_MAP.Count);
+                    auto_tile.m_TilingRules = new List<AutoTile.TilingRule>(XP_RULE_MAP.Count);
                     for (var i = 0; i < XP_RULE_MAP.Count; ++i) {
                         var rule = new AutoTile.TilingRule();
                         rule.m_Neighbors = XP_RULE_MAP[i];
-                        rule.m_Sprites = GetSpritesByIdx(sprs, i);
+                        rule.m_Sprites = sprs.GetSpritesByIdx(m_AnimationFrames, i);
                         if (m_AnimationFrames > 1) {
                             rule.m_AnimationSpeed = m_AnimationSpeed;
                             rule.m_Output = AutoTile.TilingRule.OutputSprite.Animation;
@@ -653,16 +696,20 @@ namespace RPGMakerAssetImporter
                         else {
                             rule.m_Output = AutoTile.TilingRule.OutputSprite.Single;
                         }
-                        rule_tile.m_TilingRules.Add(rule);
+                        auto_tile.m_TilingRules.Add(rule);
                     }
 
-                    var rule_tile_path = Path.Combine(Path.GetDirectoryName(org_path), Path.GetFileNameWithoutExtension(org_path) + "_RuleTile.asset");
-                    rule_tile_path = AssetDatabase.GenerateUniqueAssetPath(rule_tile_path);
+                    var auto_tile_path = Path.Combine(Path.GetDirectoryName(org_path), Path.GetFileNameWithoutExtension(org_path) + "_RuleTile.asset");
+                    auto_tile_path = AssetDatabase.GenerateUniqueAssetPath(auto_tile_path);
 
-                    AssetDatabase.CreateAsset(rule_tile, rule_tile_path);
+                    AssetDatabase.CreateAsset(auto_tile, auto_tile_path);
                 }
 
                 GUI.enabled = true;
+
+                //if (GUILayout.Button("Test A2")) {
+                //    MakeAutoTile_A2(@"E:\RPGMakerMV\Project1\img\tilesets\Inside_A2.png");
+                //}
             }
         }
     }

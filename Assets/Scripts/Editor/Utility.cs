@@ -56,7 +56,7 @@ namespace RPGMakerAssetImporter
 
         public static Sprite GetSpriteByIdx(this List<Sprite> sprs, int frame, int idx)
         {
-            return sprs.GetSpriteByName(string.Format("tile_{0}_{1}", frame, idx));
+            return sprs.GetSpriteByName($"tile_{frame}_{idx}");
         }
 
         public static Sprite[] GetSpritesByIdx(this List<Sprite> sprs, int frame_count, int idx)

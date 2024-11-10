@@ -8,7 +8,7 @@ namespace RPGMakerAssetImporter
     /// <summary>
     /// RPG Maker Auto Tile
     /// 
-    /// incase the user do not have the 2d-extra package, I duplicate the RuleTile
+    /// in case the user do not have the 2d-extra package, I duplicate the RuleTile
     /// from 2d-extra and rename it as AutoTile, and cleanup some code.
     /// </summary>
     [Serializable]
@@ -20,15 +20,13 @@ namespace RPGMakerAssetImporter
         /// <summary>
         /// Returns the number of neighbors a Rule Tile can have.
         /// </summary>
-        public virtual int neighborCount
-        {
-            get { return NeighborCount; }
-        }
+        public virtual int neighborCount => NeighborCount;
 
         /// <summary>
         /// The Default Sprite set when creating a new Rule.
         /// </summary>
         public Sprite m_DefaultSprite;
+
         /// <summary>
         /// The Default Collider Type set when creating a new Rule.
         /// </summary>
@@ -38,6 +36,7 @@ namespace RPGMakerAssetImporter
         /// A cache for the neighboring Tiles when matching Rules.
         /// </summary>
         protected TileBase[] m_CachedNeighboringTiles = new TileBase[NeighborCount];
+
         private Quaternion m_GameObjectQuaternion;
 
         /// <summary>
